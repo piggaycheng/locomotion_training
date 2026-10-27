@@ -19,6 +19,14 @@ def test_task_registrations():
             "default_agent": "rsl_rl",
         },
     }
+    for terrain in ("Flat", "Rough"):
+        expected[f"MyLocomotionTraining-Velocity-{terrain}-M20"] = {
+            "entry_point": "isaaclab.envs:ManagerBasedRLEnv",
+            "env_cfg_entry_point": (
+                f"my_locomotion_training.tasks.velocity.config.m20.{terrain.lower()}_env_cfg:M20{terrain}EnvCfg"
+            ),
+            "default_agent": "rsl_rl",
+        }
 
     for task_id, expected_values in expected.items():
         spec = gym.spec(task_id)
@@ -26,3 +34,4 @@ def test_task_registrations():
         assert spec.kwargs["env_cfg_entry_point"] == expected_values["env_cfg_entry_point"]
         if "default_agent" in expected_values:
             assert spec.kwargs["default_agent"] == expected_values["default_agent"]
+        assert spec.kwargs["rsl_rl_cfg_entry_point"]
