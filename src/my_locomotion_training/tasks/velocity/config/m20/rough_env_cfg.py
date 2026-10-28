@@ -89,6 +89,11 @@ class M20RewardsCfg(RewardsCfg):
         weight=-0.1,
         params={"asset_cfg": SceneEntityCfg("robot", joint_names=[LEG_JOINTS])},
     )
+    hipx_posture = RewTerm(
+        func=mdp.joint_deviation_l1,
+        weight=-0.4,
+        params={"asset_cfg": SceneEntityCfg("robot", joint_names=[".*_hipx_joint"])},
+    )
     wheel_slip = RewTerm(
         func=mdp.wheel_slip,
         weight=-0.5,

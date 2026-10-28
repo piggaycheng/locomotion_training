@@ -67,6 +67,9 @@ def test_control_and_position_terms_exclude_continuous_wheels(cfg_type):
     assert legs.isdisjoint(wheels) and legs | wheels == set(names)
     for term in (cfg.observations.policy.joint_pos, cfg.rewards.leg_posture, cfg.rewards.dof_pos_limits):
         assert selected(term.params["asset_cfg"].joint_names) == legs
+    assert selected(cfg.rewards.hipx_posture.params["asset_cfg"].joint_names) == {
+        f"{leg}_hipx_joint" for leg in ("fl", "fr", "hl", "hr")
+    }
     assert selected(cfg.observations.policy.wheel_vel.params["asset_cfg"].joint_names) == wheels
     assert selected(cfg.rewards.dof_acc_l2.params["asset_cfg"].joint_names) == legs
     assert selected(cfg.rewards.wheel_acc_l2.params["asset_cfg"].joint_names) == wheels
