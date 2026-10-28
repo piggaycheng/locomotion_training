@@ -29,7 +29,9 @@ pytestmark = [
 
 @pytest.fixture(scope="module")
 def simulation(request):
-    with launch_simulation(resolve_presets(M20FlatEnvCfg())):
+    cfg = resolve_presets(M20FlatEnvCfg())
+    cfg.sim.device = os.environ.get("M20_SIM_DEVICE", cfg.sim.device)
+    with launch_simulation(cfg):
         yield
         # Kit exits the process on close, before pytest can propagate its status.
         if request.session.testsfailed:
@@ -39,6 +41,7 @@ def simulation(request):
 @pytest.mark.parametrize("terrain,observation_size", [("Flat", 60), ("Rough", 247)])
 def test_m20_physics_and_finite_observations(simulation, terrain, observation_size):
     cfg = resolve_presets(M20FlatEnvCfg() if terrain == "Flat" else M20RoughEnvCfg())
+    cfg.sim.device = os.environ.get("M20_SIM_DEVICE", cfg.sim.device)
     cfg.scene.num_envs = 2
     cfg.seed = 42
     cfg.observations.policy.enable_corruption = False
@@ -54,6 +57,15 @@ def test_m20_physics_and_finite_observations(simulation, terrain, observation_si
         assert obs["policy"].shape == (2, observation_size)
         robot = env.unwrapped.scene["robot"]
         assert robot.num_joints == 16
+        if terrain == "Flat":
+            for leg in ("fl", "fr", "hl", "hr"):
+                hip_ids, _ = robot.find_bodies(f"{leg}_hipy")
+                knee_ids, _ = robot.find_bodies(f"{leg}_knee")
+                knee_offset_x = robot.data.body_pos_w.torch[:, knee_ids, 0] - robot.data.body_pos_w.torch[:, hip_ids, 0]
+                if leg.startswith("f"):
+                    assert (knee_offset_x < 0).all()
+                else:
+                    assert (knee_offset_x > 0).all()
         actions = torch.zeros((2, 16), device=env.unwrapped.device)
         with torch.inference_mode():
             for _ in range(150):

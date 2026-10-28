@@ -100,15 +100,16 @@ do not combine it with `uv run --extra isaacsim`, which selects a separate pip r
 checkout, no viewer is launched unless requested with `--viz`. Both tasks default to **4096 environments**.
 On an 8 GB GPU, this may exceed available VRAM; override with `--num_envs 128` if necessary.
 Checkpoints and TensorBoard logs live under `logs/rsl_rl/m20_flat` and
-`logs/rsl_rl/m20_rough`. Training defaults to 1500/3000 PPO iterations respectively.
+`logs/rsl_rl/m20_rough`. Training defaults to 1500/10000 PPO iterations respectively.
 The simulation test command disables unrelated auto-discovered pytest plugins (such as system ROS plugins).
+Set `M20_SIM_DEVICE=cpu` for the simulation tests to use CPU physics when GPU memory is occupied.
 
 **Known Newton limitation:** longer rough-terrain training runs with `physics=newton_mjwarp` have produced NaN
 robot positions and velocities, despite passing short smoke runs. The exact solver/model interaction is still
 unresolved; use the default Isaac Sim PhysX backend for M20 training. The subsequent observation NaN error is
 a symptom of invalid physics state, not a reason to replace observations with zeros.
-A 512-environment PhysX rough-terrain run completed 120 PPO iterations (1,474,560 transitions) without NaNs;
-this is a stability check, not evidence of policy convergence.
+A 512-environment PhysX rough-terrain run with the earlier outward-bending pose completed 120 PPO iterations
+(1,474,560 transitions) without NaNs; this is a stability check, not evidence of policy convergence.
 
 ### Inspected USD structure
 
@@ -129,8 +130,12 @@ First startup therefore needs network access.
 
 USD angular limits/speeds are in degrees; the asset configuration converts speeds to rad/s. Joint-frame rotations
 affect rotation signs: do not infer forward rolling from the `Y` axis token alone.
-The initial front/rear hip and knee angles are mirrored, with the base at 0.49 m.
+The initial knees bend inward toward the body center: front hipy/knee angles are -0.65/+1.3 rad,
+and rear hipy/knee angles are +0.65/-1.3 rad, with the base at 0.49 m.
 PD gains (legs 80/2, wheels 0/2) are baseline simulation choices, **not verified hardware controller parameters**.
+PhysX articulation self-collision is enabled; joint/asset collision filters still apply.
+Policies trained with the previous outward-bending pose should be retrained: the default leg-action offsets,
+relative joint-angle observations, and posture reward reference have changed.
 
 ### Actions, observations, and rewards
 

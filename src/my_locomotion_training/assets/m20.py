@@ -33,7 +33,7 @@ M20_CFG = ArticulationCfg(
             max_depenetration_velocity=1.0,
         ),
         articulation_props=PhysxArticulationCfg(
-            enabled_self_collisions=False,
+            enabled_self_collisions=True,
             solver_position_iteration_count=8,
             solver_velocity_iteration_count=4,
         ),
@@ -42,10 +42,10 @@ M20_CFG = ArticulationCfg(
         pos=(0.0, 0.0, STANDING_HEIGHT),
         joint_pos={
             ".*_hipx_joint": 0.0,
-            "f[lr]_hipy_joint": 0.65,
-            "h[lr]_hipy_joint": -0.65,
-            "f[lr]_knee_joint": -1.3,
-            "h[lr]_knee_joint": 1.3,
+            "f[lr]_hipy_joint": -0.65,
+            "h[lr]_hipy_joint": 0.65,
+            "f[lr]_knee_joint": 1.3,
+            "h[lr]_knee_joint": -1.3,
             WHEEL_JOINTS: 0.0,
         },
         joint_vel={".*": 0.0},

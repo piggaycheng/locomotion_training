@@ -13,7 +13,7 @@ from isaaclab_tasks.core.velocity.config.go2.agents.rsl_rl_ppo_cfg import Unitre
 @configclass
 class M20RoughPPORunnerCfg(UnitreeGo2RoughPPORunnerCfg):
     experiment_name = "m20_rough"
-    max_iterations = 3000
+    max_iterations = 10000
 
 
 @configclass
