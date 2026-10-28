@@ -31,6 +31,8 @@ M20_CFG = ArticulationCfg(
             linear_damping=0.0,
             angular_damping=0.0,
             max_depenetration_velocity=1.0,
+            max_angular_velocity=1000.0,
+            max_linear_velocity=1000.0,
         ),
         articulation_props=PhysxArticulationCfg(
             enabled_self_collisions=True,
