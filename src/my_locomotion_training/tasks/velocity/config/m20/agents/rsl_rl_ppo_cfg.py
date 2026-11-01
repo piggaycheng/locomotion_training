@@ -15,6 +15,12 @@ class M20RoughPPORunnerCfg(UnitreeGo2RoughPPORunnerCfg):
     experiment_name = "m20_rough"
     max_iterations = 10000
 
+    def __post_init__(self):
+        super().__post_init__()
+        self.actor.distribution_cfg.std_type = "log"
+        self.actor.obs_normalization = True
+        self.critic.obs_normalization = True
+
 
 @configclass
 class M20FlatPPORunnerCfg(M20RoughPPORunnerCfg):

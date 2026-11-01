@@ -12,6 +12,7 @@ from typing import TYPE_CHECKING
 import torch
 
 from isaaclab.managers import SceneEntityCfg
+from isaaclab.utils.math import quat_apply_inverse
 
 if TYPE_CHECKING:
     from isaaclab.envs import ManagerBasedRLEnv
@@ -144,3 +145,37 @@ def wheel_air_time_variance(env: ManagerBasedRLEnv, sensor_cfg: SceneEntityCfg, 
     last_air = data.last_air_time.torch[:, ids].clamp(max=max_time)
     last_contact = data.last_contact_time.torch[:, ids].clamp(max=max_time)
     return last_air.var(dim=-1) + last_contact.var(dim=-1)
+
+
+def wheel_stance_shortfall(
+    env: ManagerBasedRLEnv,
+    asset_cfg: SceneEntityCfg,
+    min_ratio: float = 0.9,
+    terrain_sensor_cfg: SceneEntityCfg | None = None,
+    max_relief: float = 0.05,
+) -> torch.Tensor:
+    """Penalize front/rear wheel spacing falling below ``min_ratio`` of its reference value.
+
+    Wheel positions are expressed in the base frame, so the gap is independent of heading.
+    The reference gaps are taken once from the median over environments on the first call,
+    when the robots are still near the default standing pose. Only shrinkage is penalized, and
+    only on flat terrain when ``terrain_sensor_cfg`` is given (legs move freely on stairs).
+    Wheels must be ordered as selected by ``asset_cfg`` (front/rear are split by base-frame x).
+    """
+    robot = env.scene[asset_cfg.name]
+    pos_w = robot.data.body_pos_w.torch[:, asset_cfg.body_ids]
+    root_pos = robot.data.root_pos_w.torch.unsqueeze(1)
+    root_quat = robot.data.root_quat_w.torch.unsqueeze(1).expand(-1, pos_w.shape[1], -1)
+    pos_b = quat_apply_inverse(root_quat, pos_w - root_pos)
+    front = pos_b[..., 0] > 0.0
+    n_front = front.sum(dim=-1).clamp(min=1)
+    n_rear = (~front).sum(dim=-1).clamp(min=1)
+    x_front = (pos_b[..., 0] * front).sum(dim=-1) / n_front
+    x_rear = (pos_b[..., 0] * ~front).sum(dim=-1) / n_rear
+    gap = x_front - x_rear
+    ref = getattr(env, "_wheel_stance_ref", None)
+    if ref is None:
+        ref = gap.median().detach()
+        env._wheel_stance_ref = ref
+    shortfall = (min_ratio * ref - gap).clamp(min=0.0).square()
+    return shortfall * _flat_terrain(env, terrain_sensor_cfg, max_relief)

@@ -101,6 +101,30 @@ checkout, no viewer is launched unless requested with `--viz`. Both tasks defaul
 On an 8 GB GPU, this may exceed available VRAM; override with `--num_envs 128` if necessary.
 Checkpoints and TensorBoard logs live under `logs/rsl_rl/m20_flat` and
 `logs/rsl_rl/m20_rough`. Training defaults to 1500/10000 PPO iterations respectively.
+
+Resume training from an existing run (this Isaac Lab version has no `--resume`; use `--checkpoint`):
+
+```bash
+# Continue from the latest checkpoint of the newest run of this task
+bash scripts/isaacsim.sh train --rl_library rsl_rl \
+  --task MyLocomotionTraining-Velocity-Rough-M20 --checkpoint latest
+
+# Or pass a specific checkpoint file
+bash scripts/isaacsim.sh train --rl_library rsl_rl \
+  --task MyLocomotionTraining-Velocity-Rough-M20 \
+  --checkpoint logs/rsl_rl/m20_rough/2026-10-30_11-14-17/model_3400.pt
+```
+
+`latest` picks the newest run, so a fresh run that only saved `model_0.pt` will shadow older runs; delete it
+or pass an explicit path. Resuming writes a new log folder and restores the optimizer state
+(`--no-resume_optimizer_state` keeps a fresh optimizer). `--max_iterations` counts the additional iterations.
+
+View training curves with TensorBoard (open http://localhost:6006):
+
+```bash
+uv run tensorboard --logdir logs/rsl_rl   # or logs/rsl_rl/m20_flat for one task
+```
+
 The simulation test command disables unrelated auto-discovered pytest plugins (such as system ROS plugins).
 Set `M20_SIM_DEVICE=cpu` for the simulation tests to use CPU physics when GPU memory is occupied.
 

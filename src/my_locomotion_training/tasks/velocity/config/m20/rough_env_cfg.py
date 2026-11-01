@@ -5,6 +5,7 @@
 
 """M20 mixed position/velocity control on rough terrain."""
 
+from isaaclab.managers import EventTermCfg as EventTerm
 from isaaclab.managers import ObservationTermCfg as ObsTerm
 from isaaclab.managers import RewardTermCfg as RewTerm
 from isaaclab.managers import SceneEntityCfg
@@ -12,6 +13,7 @@ from isaaclab.utils import configclass
 from isaaclab.utils.noise import UniformNoiseCfg as Unoise
 
 from isaaclab_tasks.core.velocity.velocity_env_cfg import (
+    EventsCfg,
     LocomotionVelocityRoughEnvCfg,
     ObservationsCfg,
     RewardsCfg,
@@ -79,26 +81,21 @@ class M20ObservationsCfg(ObservationsCfg):
 @configclass
 class M20RewardsCfg(RewardsCfg):
     feet_air_time = None
-    base_height_l2 = RewTerm(
-        func=mdp.base_height_l2,
-        weight=-2.0,
-        params={"target_height": STANDING_HEIGHT, "sensor_cfg": SceneEntityCfg("height_scanner")},
-    )
     leg_posture = RewTerm(
         func=mdp.joint_deviation_l1,
-        weight=-0.1,
+        weight=-0.5,
         params={"asset_cfg": SceneEntityCfg("robot", joint_names=[LEG_JOINTS])},
     )
     # Hip-x is only needed to move sideways, so keep it at default otherwise.
     hipx_posture = RewTerm(
         func=mdp.joint_deviation_no_lateral,
-        weight=-0.4,
+        weight=-0.5,
         params={"asset_cfg": SceneEntityCfg("robot", joint_names=[".*_hipx_joint"])},
     )
     # Without a lateral command on flat ground, drive with the wheels and keep the legs still.
     rolling_leg_posture = RewTerm(
         func=mdp.joint_deviation_no_lateral,
-        weight=-0.2,
+        weight=-1.0,
         params={
             "asset_cfg": SceneEntityCfg("robot", joint_names=[".*_(hipy|knee)_joint"]),
             "terrain_sensor_cfg": SceneEntityCfg("height_scanner"),
@@ -154,10 +151,26 @@ class M20RewardsCfg(RewardsCfg):
 
 
 @configclass
+class M20EventsCfg(EventsCfg):
+    actuator_gains = EventTerm(
+        func=mdp.randomize_actuator_gains,
+        mode="startup",
+        params={
+            "asset_cfg": SceneEntityCfg("robot", joint_names=[LEG_JOINTS]),
+            "stiffness_distribution_params": (0.9, 1.1),
+            "damping_distribution_params": (0.9, 1.1),
+            "operation": "scale",
+            "distribution": "uniform",
+        },
+    )
+
+
+@configclass
 class M20RoughEnvCfg(LocomotionVelocityRoughEnvCfg):
     actions: M20ActionsCfg = M20ActionsCfg()
     observations: M20ObservationsCfg = M20ObservationsCfg()
     rewards: M20RewardsCfg = M20RewardsCfg()
+    events: M20EventsCfg = M20EventsCfg()
 
     def __post_init__(self):
         super().__post_init__()
@@ -184,19 +197,37 @@ class M20RoughEnvCfg(LocomotionVelocityRoughEnvCfg):
 
         for event_name in ("add_base_mass", "base_com", "base_external_force_torque"):
             getattr(self.events, event_name).params["asset_cfg"].body_names = ["base_link"]
+        self.events.physics_material.params["static_friction_range"] = (0.4, 1.2)
+        self.events.physics_material.params["dynamic_friction_range"] = (0.3, 1.0)
+        # Proprioceptive/sensor observations arrive 0-2 policy steps late; commands and last action do not.
+        for name in (
+            "base_lin_vel",
+            "base_ang_vel",
+            "projected_gravity",
+            "joint_pos",
+            "joint_vel",
+            "wheel_vel",
+            "wheel_contact",
+            "height_scan",
+        ):
+            term = getattr(self.observations.policy, name, None)
+            if term is not None:
+                term.delay_min_lag = 0
+                term.delay_max_lag = 2
         self.events.reset_robot_joints.params["position_range"] = (0.9, 1.1)
         self.events.reset_base.params["velocity_range"] = {
             axis: (-0.1, 0.1) for axis in ("x", "y", "z", "roll", "pitch", "yaw")
         }
 
-        self.rewards.track_lin_vel_xy_exp.weight = 2.5
-        self.rewards.track_lin_vel_xy_exp.params["std"] = 0.7
-        self.rewards.track_ang_vel_z_exp.weight = 1.25
-        self.rewards.track_ang_vel_z_exp.params["std"] = 0.7
-        self.rewards.flat_orientation_l2.weight = -2.5
-        self.rewards.dof_torques_l2.weight = -2.0e-5
+        self.rewards.track_lin_vel_xy_exp.weight = 4.0
+        self.rewards.track_lin_vel_xy_exp.params["std"] = 0.5
+        self.rewards.track_ang_vel_z_exp.weight = 4.0
+        self.rewards.track_ang_vel_z_exp.params["std"] = 0.5
+        self.rewards.flat_orientation_l2.weight = -0.1
+        self.rewards.dof_torques_l2.weight = -1.0e-5
         self.rewards.dof_acc_l2.params["asset_cfg"] = SceneEntityCfg("robot", joint_names=[LEG_JOINTS])
         self.rewards.dof_pos_limits.weight = -1.0
         self.rewards.dof_pos_limits.params["asset_cfg"] = SceneEntityCfg("robot", joint_names=[LEG_JOINTS])
+        self.rewards.ang_vel_xy_l2.weight = -0.01
         self.rewards.undesired_contacts.params["sensor_cfg"].body_names = [".*_(hipx|hipy|knee)"]
         self.terminations.base_contact.params["sensor_cfg"].body_names = ["base_link"]

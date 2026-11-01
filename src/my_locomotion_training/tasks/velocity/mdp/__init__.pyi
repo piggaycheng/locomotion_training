@@ -13,6 +13,7 @@ __all__ = [
     "wheel_contacts",
     "wheel_long_lift",
     "wheel_slip",
+    "wheel_stance_shortfall",
     "wheel_vel_at_rest",
 ]
 
@@ -26,5 +27,6 @@ from .wheels import (
     wheel_contacts,
     wheel_long_lift,
     wheel_slip,
+    wheel_stance_shortfall,
     wheel_vel_at_rest,
 )

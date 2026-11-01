@@ -82,9 +82,7 @@ def test_flat_configuration_does_not_mutate_rough_height_terms():
     flat = M20FlatEnvCfg()
     rough = M20RoughEnvCfg()
     assert flat.scene.height_scanner is None
-    assert flat.rewards.base_height_l2.params["sensor_cfg"] is None
     assert rough.scene.height_scanner.prim_path.endswith("/base_link")
-    assert rough.rewards.base_height_l2.params["sensor_cfg"].name == "height_scanner"
     assert rough.scene.terrain.terrain_generator.curriculum
     for name in ("add_base_mass", "base_com", "base_external_force_torque"):
         assert getattr(rough.events, name).params["asset_cfg"].body_names == ["base_link"]

@@ -18,5 +18,4 @@ class M20FlatEnvCfg(M20RoughEnvCfg):
         self.scene.terrain.terrain_generator = None
         self.scene.height_scanner = None
         self.observations.policy.height_scan = None
-        self.rewards.base_height_l2.params["sensor_cfg"] = None
         self.curriculum.terrain_levels = None
