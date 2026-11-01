@@ -83,7 +83,7 @@ class M20RewardsCfg(RewardsCfg):
     feet_air_time = None
     leg_posture = RewTerm(
         func=mdp.joint_deviation_l1,
-        weight=-2.0,
+        weight=-0.5,
         params={"asset_cfg": SceneEntityCfg("robot", joint_names=[LEG_JOINTS])},
     )
     stand_still = RewTerm(
@@ -96,6 +96,23 @@ class M20RewardsCfg(RewardsCfg):
         func=mdp.joint_deviation_no_lateral,
         weight=-0.5,
         params={"asset_cfg": SceneEntityCfg("robot", joint_names=[".*_hipx_joint"])},
+    )
+    # Without a lateral command on flat ground, drive with the wheels and keep the legs still.
+    rolling_leg_posture = RewTerm(
+        func=mdp.joint_deviation_no_lateral,
+        weight=-1.0,
+        params={
+            "asset_cfg": SceneEntityCfg("robot", joint_names=[".*_(hipy|knee)_joint"]),
+            "terrain_sensor_cfg": SceneEntityCfg("height_scanner"),
+        },
+    )
+    rolling_leg_vel = RewTerm(
+        func=mdp.leg_vel_no_lateral,
+        weight=-0.01,
+        params={
+            "asset_cfg": SceneEntityCfg("robot", joint_names=[LEG_JOINTS]),
+            "terrain_sensor_cfg": SceneEntityCfg("height_scanner"),
+        },
     )
     # One wheel may lift to step; penalize two or more lifted at once (three-legged hopping).
     wheel_air_time = RewTerm(
@@ -121,6 +138,15 @@ class M20RewardsCfg(RewardsCfg):
             "asset_cfg": SceneEntityCfg("robot", body_names=[WHEEL_BODIES]),
             "sensor_cfg": SceneEntityCfg("contact_forces", body_names=[WHEEL_BODIES]),
             "wheel_radius": WHEEL_RADIUS,
+        },
+    )
+    # Keep the front/rear wheelbase from collapsing (flat terrain only, so stairs stay free).
+    wheel_stance = RewTerm(
+        func=mdp.wheel_stance_shortfall,
+        weight=-20.0,
+        params={
+            "asset_cfg": SceneEntityCfg("robot", body_names=[WHEEL_BODIES]),
+            "terrain_sensor_cfg": SceneEntityCfg("height_scanner"),
         },
     )
     wheel_acc_l2 = RewTerm(
