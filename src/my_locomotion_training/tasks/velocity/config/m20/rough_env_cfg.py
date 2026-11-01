@@ -83,31 +83,19 @@ class M20RewardsCfg(RewardsCfg):
     feet_air_time = None
     leg_posture = RewTerm(
         func=mdp.joint_deviation_l1,
-        weight=-0.5,
+        weight=-2.0,
         params={"asset_cfg": SceneEntityCfg("robot", joint_names=[LEG_JOINTS])},
+    )
+    stand_still = RewTerm(
+        func=mdp.stand_still_joint_deviation_l1,
+        weight=-2.5,
+        params={"command_name": "base_velocity", "asset_cfg": SceneEntityCfg("robot", joint_names=[LEG_JOINTS])},
     )
     # Hip-x is only needed to move sideways, so keep it at default otherwise.
     hipx_posture = RewTerm(
         func=mdp.joint_deviation_no_lateral,
         weight=-0.5,
         params={"asset_cfg": SceneEntityCfg("robot", joint_names=[".*_hipx_joint"])},
-    )
-    # Without a lateral command on flat ground, drive with the wheels and keep the legs still.
-    rolling_leg_posture = RewTerm(
-        func=mdp.joint_deviation_no_lateral,
-        weight=-1.0,
-        params={
-            "asset_cfg": SceneEntityCfg("robot", joint_names=[".*_(hipy|knee)_joint"]),
-            "terrain_sensor_cfg": SceneEntityCfg("height_scanner"),
-        },
-    )
-    rolling_leg_vel = RewTerm(
-        func=mdp.leg_vel_no_lateral,
-        weight=-0.01,
-        params={
-            "asset_cfg": SceneEntityCfg("robot", joint_names=[LEG_JOINTS]),
-            "terrain_sensor_cfg": SceneEntityCfg("height_scanner"),
-        },
     )
     # One wheel may lift to step; penalize two or more lifted at once (three-legged hopping).
     wheel_air_time = RewTerm(
@@ -128,7 +116,7 @@ class M20RewardsCfg(RewardsCfg):
     )
     wheel_slip = RewTerm(
         func=mdp.wheel_slip,
-        weight=-0.5,
+        weight=-0.2,
         params={
             "asset_cfg": SceneEntityCfg("robot", body_names=[WHEEL_BODIES]),
             "sensor_cfg": SceneEntityCfg("contact_forces", body_names=[WHEEL_BODIES]),
@@ -193,6 +181,7 @@ class M20RoughEnvCfg(LocomotionVelocityRoughEnvCfg):
         self.commands.base_velocity.ranges.lin_vel_x = (-1.0, 1.0)
         self.commands.base_velocity.ranges.lin_vel_y = (-1.0, 1.0)
         self.commands.base_velocity.ranges.ang_vel_z = (-1.0, 1.0)
+        self.commands.base_velocity.rel_standing_envs = 0.15
         self.commands.base_velocity.debug_vis = False
 
         for event_name in ("add_base_mass", "base_com", "base_external_force_torque"):
@@ -219,12 +208,13 @@ class M20RoughEnvCfg(LocomotionVelocityRoughEnvCfg):
             axis: (-0.1, 0.1) for axis in ("x", "y", "z", "roll", "pitch", "yaw")
         }
 
-        self.rewards.track_lin_vel_xy_exp.weight = 4.0
+        self.rewards.track_lin_vel_xy_exp.weight = 3.0
         self.rewards.track_lin_vel_xy_exp.params["std"] = 0.5
-        self.rewards.track_ang_vel_z_exp.weight = 4.0
+        self.rewards.track_ang_vel_z_exp.weight = 3.0
         self.rewards.track_ang_vel_z_exp.params["std"] = 0.5
-        self.rewards.flat_orientation_l2.weight = -0.1
-        self.rewards.dof_torques_l2.weight = -1.0e-5
+        self.rewards.flat_orientation_l2.weight = -1.0
+        self.rewards.dof_torques_l2.weight = -2.0e-6
+        self.rewards.dof_acc_l2.weight = -5.0e-8
         self.rewards.dof_acc_l2.params["asset_cfg"] = SceneEntityCfg("robot", joint_names=[LEG_JOINTS])
         self.rewards.dof_pos_limits.weight = -1.0
         self.rewards.dof_pos_limits.params["asset_cfg"] = SceneEntityCfg("robot", joint_names=[LEG_JOINTS])
