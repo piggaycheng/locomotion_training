@@ -38,12 +38,11 @@ class M20ActionsCfg:
         joint_names=[LEG_JOINTS],
         scale=0.25,
         use_default_offset=True,
-        clip={LEG_JOINTS: (-1.5, 1.5)},
     )
     wheel_vel = mdp.JointVelocityActionCfg(
         asset_name="robot",
         joint_names=[WHEEL_JOINTS],
-        scale=20.0,
+        scale=10.0,
         use_default_offset=False,
         clip={WHEEL_JOINTS: (-60.0, 60.0)},
     )
@@ -81,9 +80,11 @@ class M20ObservationsCfg(ObservationsCfg):
 @configclass
 class M20RewardsCfg(RewardsCfg):
     feet_air_time = None
+    alive = RewTerm(func=mdp.is_alive, weight=1.0)
+    terminating = RewTerm(func=mdp.is_terminated, weight=-200.0)
     leg_posture = RewTerm(
         func=mdp.joint_deviation_l1,
-        weight=-0.5,
+        weight=-0.1,
         params={"asset_cfg": SceneEntityCfg("robot", joint_names=[LEG_JOINTS])},
     )
     stand_still = RewTerm(
@@ -133,7 +134,7 @@ class M20RewardsCfg(RewardsCfg):
     )
     wheel_slip = RewTerm(
         func=mdp.wheel_slip,
-        weight=-0.2,
+        weight=-0.1,
         params={
             "asset_cfg": SceneEntityCfg("robot", body_names=[WHEEL_BODIES]),
             "sensor_cfg": SceneEntityCfg("contact_forces", body_names=[WHEEL_BODIES]),

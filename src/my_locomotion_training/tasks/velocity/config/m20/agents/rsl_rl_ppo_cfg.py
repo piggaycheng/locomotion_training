@@ -20,6 +20,7 @@ class M20RoughPPORunnerCfg(UnitreeGo2RoughPPORunnerCfg):
         self.actor.distribution_cfg.std_type = "log"
         self.actor.obs_normalization = True
         self.critic.obs_normalization = True
+        self.algorithm.entropy_coef = 0.002
 
 
 @configclass

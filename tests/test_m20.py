@@ -74,8 +74,12 @@ def test_control_and_position_terms_exclude_continuous_wheels(cfg_type):
     assert selected(cfg.rewards.dof_acc_l2.params["asset_cfg"].joint_names) == legs
     assert selected(cfg.rewards.wheel_acc_l2.params["asset_cfg"].joint_names) == wheels
     assert cfg.scene.robot.actuators["wheels"].stiffness == 0.0
+    assert cfg.actions.joint_pos.clip is None
+    assert cfg.actions.wheel_vel.scale == 10.0
     assert cfg.actions.wheel_vel.use_default_offset is False
     assert cfg.rewards.feet_air_time is None
+    assert cfg.rewards.alive.weight == 1.0
+    assert cfg.rewards.terminating.weight == -200.0
 
 
 def test_flat_configuration_does_not_mutate_rough_height_terms():
