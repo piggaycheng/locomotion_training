@@ -86,6 +86,7 @@ bash scripts/isaacsim.sh train --rl_library rsl_rl \
 bash scripts/isaacsim.sh train --rl_library rsl_rl \
   --task MyLocomotionTraining-Velocity-Rough-M20
 
+# Video recording needs MoviePy first: uv pip install "moviepy>=1.0.3,<2.0.0.dev0"
 # Record a 10 s video (500 steps at 0.02 s/step) every 500 iterations (500 * 24 steps/iter = 12000 steps)
 # Videos are saved under logs/rsl_rl/<experiment>/<run>/videos/train/
 bash scripts/isaacsim.sh train --rl_library rsl_rl \
