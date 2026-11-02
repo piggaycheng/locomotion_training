@@ -86,6 +86,12 @@ bash scripts/isaacsim.sh train --rl_library rsl_rl \
 bash scripts/isaacsim.sh train --rl_library rsl_rl \
   --task MyLocomotionTraining-Velocity-Rough-M20
 
+# Record a 10 s video (500 steps at 0.02 s/step) every 500 iterations (500 * 24 steps/iter = 12000 steps)
+# Videos are saved under logs/rsl_rl/<experiment>/<run>/videos/train/
+bash scripts/isaacsim.sh train --rl_library rsl_rl \
+  --task MyLocomotionTraining-Velocity-Flat-M20 \
+  --video --video_length 500 --video_interval 12000
+
 # View the latest policy (checkpoint selection is scoped to the task's experiment directory)
 bash scripts/isaacsim.sh play --rl_library rsl_rl \
   --task MyLocomotionTraining-Velocity-Flat-M20 --checkpoint latest --num_envs 16 --viz kit
