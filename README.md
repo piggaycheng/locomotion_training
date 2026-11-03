@@ -175,9 +175,9 @@ to +/-1.5 rad), followed by four wheel speeds (`20 rad/s * action`, target clipp
 Within each group, joint order follows the articulation; the PhysX asset resolves legs by hipx, hipy, knee, each
 in `fl, fr, hl, hr` order, and wheels in `fl, fr, hl, hr` order.
 
-The flat policy observes **60 values**: base linear/angular velocity, projected gravity, velocity commands,
-12 relative leg angles, 12 leg velocities, 16 previous actions, four wheel velocities, and four wheel-contact flags.
-The rough policy adds **187 terrain-height samples** (247 values total). Continuous wheel angles are deliberately
+The flat policy observes **56 values**: base linear/angular velocity, projected gravity, velocity commands,
+12 relative leg angles, 12 leg velocities, 16 previous actions, and four wheel velocities.
+The rough policy adds **187 terrain-height samples** (243 values total). Continuous wheel angles are deliberately
 excluded: spinning multiple revolutions must not change posture observations or position-limit penalties.
 Actor and critic share this observation group.
 

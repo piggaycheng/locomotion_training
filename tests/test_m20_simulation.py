@@ -38,7 +38,7 @@ def simulation(request):
             raise RuntimeError("M20 simulation tests failed.")
 
 
-@pytest.mark.parametrize("terrain,observation_size", [("Flat", 60), ("Rough", 247)])
+@pytest.mark.parametrize("terrain,observation_size", [("Flat", 56), ("Rough", 243)])
 def test_m20_physics_and_finite_observations(simulation, terrain, observation_size):
     cfg = resolve_presets(M20FlatEnvCfg() if terrain == "Flat" else M20RoughEnvCfg())
     cfg.sim.device = os.environ.get("M20_SIM_DEVICE", cfg.sim.device)

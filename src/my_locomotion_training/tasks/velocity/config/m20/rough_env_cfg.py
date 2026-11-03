@@ -69,10 +69,6 @@ class M20ObservationsCfg(ObservationsCfg):
             noise=Unoise(n_min=-0.5, n_max=0.5),
             scale=0.05,
         )
-        wheel_contact = ObsTerm(
-            func=mdp.wheel_contacts,
-            params={"sensor_cfg": SceneEntityCfg("contact_forces", body_names=[WHEEL_BODIES])},
-        )
 
     policy: PolicyCfg = PolicyCfg()
 
@@ -223,7 +219,6 @@ class M20RoughEnvCfg(LocomotionVelocityRoughEnvCfg):
             "joint_pos",
             "joint_vel",
             "wheel_vel",
-            "wheel_contact",
             "height_scan",
         ):
             term = getattr(self.observations.policy, name, None)

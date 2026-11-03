@@ -71,6 +71,7 @@ def test_control_and_position_terms_exclude_continuous_wheels(cfg_type):
         f"{leg}_hipx_joint" for leg in ("fl", "fr", "hl", "hr")
     }
     assert selected(cfg.observations.policy.wheel_vel.params["asset_cfg"].joint_names) == wheels
+    assert not hasattr(cfg.observations.policy, "wheel_contact")
     assert selected(cfg.rewards.dof_acc_l2.params["asset_cfg"].joint_names) == legs
     assert selected(cfg.rewards.wheel_acc_l2.params["asset_cfg"].joint_names) == wheels
     assert cfg.scene.robot.actuators["wheels"].stiffness == 0.0
