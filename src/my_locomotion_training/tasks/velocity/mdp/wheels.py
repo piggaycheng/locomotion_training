@@ -118,18 +118,45 @@ def wheel_air_time(
     env: ManagerBasedRLEnv,
     sensor_cfg: SceneEntityCfg,
     max_time: float = 0.5,
-    max_lifted: int = 1,
+    max_lifted: int = 2,
     threshold: float = 0.05,
 ) -> torch.Tensor:
-    """Penalize having more than ``max_lifted`` wheels off the ground (anti three-legged hopping).
+    """Penalize having more than ``max_lifted`` wheels off the ground (anti hopping/bounding).
 
-    One wheel may be lifted freely to step over an obstacle; the clipped air time of every
-    additional lifted wheel is penalized.
+    Up to ``max_lifted`` wheels may be lifted at once for stepping or diagonal trotting;
+    the clipped air time of every additional lifted wheel is penalized.
     """
     air_time = env.scene[sensor_cfg.name].data.current_air_time.torch[:, sensor_cfg.body_ids]
     lifted = air_time > threshold
     excess = (lifted.sum(dim=-1) - max_lifted).clamp(min=0)
     return air_time.clamp(max=max_time).sum(dim=-1) * (excess > 0) * excess
+
+
+def wheel_lateral_clearance_shortfall(
+    env: ManagerBasedRLEnv,
+    asset_cfg: SceneEntityCfg,
+    target_height: float = 0.12,
+    command_name: str = "base_velocity",
+    lateral_threshold: float = 0.1,
+) -> torch.Tensor:
+    """Penalize laterally swinging wheels that stay too close to the ground.
+
+    Active only when a lateral command is given. Wheel height is measured relative to the
+    lowest wheel in each environment (the supporting stance height), weighted by the wheel's
+    base-frame lateral speed so stance wheels are not penalized and swinging wheels must lift
+    by ``target_height`` [m] to avoid dragging.
+    """
+    robot = env.scene[asset_cfg.name]
+    pos_w = robot.data.body_pos_w.torch[:, asset_cfg.body_ids]
+    vel_w = robot.data.body_lin_vel_w.torch[:, asset_cfg.body_ids]
+    root_quat = robot.data.root_quat_w.torch.unsqueeze(1).expand(-1, pos_w.shape[1], -1)
+    vel_b = quat_apply_inverse(root_quat, vel_w)
+    z = pos_w[..., 2]
+    clearance = z - z.amin(dim=-1, keepdim=True)
+    shortfall = (target_height - clearance).clamp(min=0.0).square()
+    lateral_speed = vel_b[..., 1].abs()
+    active = ~_no_lateral_command(env, command_name, lateral_threshold)
+    return (shortfall * lateral_speed).sum(dim=-1) * active
 
 
 def wheel_long_lift(env: ManagerBasedRLEnv, sensor_cfg: SceneEntityCfg, grace_time: float = 0.4) -> torch.Tensor:
@@ -151,6 +178,8 @@ def wheel_stance_shortfall(
     env: ManagerBasedRLEnv,
     asset_cfg: SceneEntityCfg,
     min_ratio: float = 0.9,
+    command_name: str = "base_velocity",
+    lateral_threshold: float = 0.1,
     terrain_sensor_cfg: SceneEntityCfg | None = None,
     max_relief: float = 0.05,
 ) -> torch.Tensor:
@@ -159,7 +188,8 @@ def wheel_stance_shortfall(
     Wheel positions are expressed in the base frame, so the gap is independent of heading.
     The reference gaps are taken once from the median over environments on the first call,
     when the robots are still near the default standing pose. Only shrinkage is penalized, and
-    only on flat terrain when ``terrain_sensor_cfg`` is given (legs move freely on stairs).
+    only without a lateral command on flat terrain when ``terrain_sensor_cfg`` is given (legs
+    move freely when stepping sideways or climbing stairs).
     Wheels must be ordered as selected by ``asset_cfg`` (front/rear are split by base-frame x).
     """
     robot = env.scene[asset_cfg.name]
@@ -178,4 +208,7 @@ def wheel_stance_shortfall(
         ref = gap.median().detach()
         env._wheel_stance_ref = ref
     shortfall = (min_ratio * ref - gap).clamp(min=0.0).square()
-    return shortfall * _flat_terrain(env, terrain_sensor_cfg, max_relief)
+    active = _no_lateral_command(env, command_name, lateral_threshold) & _flat_terrain(
+        env, terrain_sensor_cfg, max_relief
+    )
+    return shortfall * active

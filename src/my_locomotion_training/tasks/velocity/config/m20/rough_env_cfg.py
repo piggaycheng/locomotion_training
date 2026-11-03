@@ -85,7 +85,7 @@ class M20RewardsCfg(RewardsCfg):
     )
     stand_still = RewTerm(
         func=mdp.stand_still_joint_deviation_l1,
-        weight=-2.5,
+        weight=-1.0,
         params={"command_name": "base_velocity", "asset_cfg": SceneEntityCfg("robot", joint_names=[LEG_JOINTS])},
     )
     # Hip-x is only needed to move sideways, so keep it at default otherwise.
@@ -111,7 +111,7 @@ class M20RewardsCfg(RewardsCfg):
             "terrain_sensor_cfg": SceneEntityCfg("height_scanner"),
         },
     )
-    # One wheel may lift to step; penalize two or more lifted at once (three-legged hopping).
+    # Up to two wheels may lift at once (diagonal trotting); penalize three or more lifted (hopping).
     wheel_air_time = RewTerm(
         func=mdp.wheel_air_time,
         weight=-1.0,
@@ -130,21 +130,18 @@ class M20RewardsCfg(RewardsCfg):
     )
     wheel_slip = RewTerm(
         func=mdp.wheel_slip,
-        weight=-0.1,
+        weight=-0.3,
         params={
             "asset_cfg": SceneEntityCfg("robot", body_names=[WHEEL_BODIES]),
             "sensor_cfg": SceneEntityCfg("contact_forces", body_names=[WHEEL_BODIES]),
             "wheel_radius": WHEEL_RADIUS,
         },
     )
-    # Keep the front/rear wheelbase from collapsing (flat terrain only, so stairs stay free).
-    wheel_stance = RewTerm(
-        func=mdp.wheel_stance_shortfall,
-        weight=-20.0,
-        params={
-            "asset_cfg": SceneEntityCfg("robot", body_names=[WHEEL_BODIES]),
-            "terrain_sensor_cfg": SceneEntityCfg("height_scanner"),
-        },
+    # Require laterally swinging wheels to lift clear of the ground instead of dragging sideways.
+    wheel_lateral_clearance = RewTerm(
+        func=mdp.wheel_lateral_clearance_shortfall,
+        weight=-5.0,
+        params={"asset_cfg": SceneEntityCfg("robot", body_names=[WHEEL_BODIES]), "target_height": 0.12},
     )
     wheel_acc_l2 = RewTerm(
         func=mdp.joint_acc_l2,
@@ -204,7 +201,7 @@ class M20RoughEnvCfg(LocomotionVelocityRoughEnvCfg):
         self.commands.base_velocity.ranges.lin_vel_x = (-1.0, 1.0)
         self.commands.base_velocity.ranges.lin_vel_y = (-1.0, 1.0)
         self.commands.base_velocity.ranges.ang_vel_z = (-1.0, 1.0)
-        self.commands.base_velocity.rel_standing_envs = 0.15
+        self.commands.base_velocity.rel_standing_envs = 0.1
         self.commands.base_velocity.debug_vis = False
 
         for event_name in ("add_base_mass", "base_com", "base_external_force_torque"):

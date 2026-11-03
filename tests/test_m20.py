@@ -15,7 +15,14 @@ from isaaclab.managers import SceneEntityCfg
 
 from my_locomotion_training.tasks.velocity.config.m20.flat_env_cfg import M20FlatEnvCfg
 from my_locomotion_training.tasks.velocity.config.m20.rough_env_cfg import M20RoughEnvCfg
-from my_locomotion_training.tasks.velocity.mdp.wheels import wheel_contacts, wheel_slip, wheel_vel_at_rest
+from my_locomotion_training.tasks.velocity.mdp.wheels import (
+    wheel_air_time,
+    wheel_contacts,
+    wheel_lateral_clearance_shortfall,
+    wheel_slip,
+    wheel_stance_shortfall,
+    wheel_vel_at_rest,
+)
 
 
 def _buffer(value):
@@ -50,6 +57,58 @@ def test_rest_penalty_allows_translation_and_turning_in_place():
     )
     actual = wheel_vel_at_rest(env, SceneEntityCfg("robot"), command_name="base_velocity")
     torch.testing.assert_close(actual, torch.tensor([13.0, 0.0, 0.0]))
+
+
+def test_lateral_stepping_rewards_allow_diagonal_lift_and_penalize_dragging():
+    # Up to 2 wheels lifted at once is allowed (Env 0, Env 1); 3 wheels lifted is penalized (Env 2).
+    command = torch.tensor([[0.5, 0.0, 0.0], [0.0, 0.5, 0.0], [0.0, -0.5, 0.0]])
+    air = [[0.2, 0.0, 0.0, 0.0], [0.2, 0.2, 0.0, 0.0], [0.2, 0.2, 0.2, 0.0]]
+    pos = [
+        [[0.25, 0.1, 0.09], [0.25, -0.1, 0.09], [-0.25, 0.1, 0.09], [-0.25, -0.1, 0.09]],
+        # Dragging laterally at ground level vs lifted 0.12 m clear of the ground.
+        [[0.2, 0.1, 0.09], [0.2, -0.1, 0.09], [-0.2, 0.1, 0.09], [-0.2, -0.1, 0.09]],
+        [[0.2, 0.1, 0.21], [0.2, -0.1, 0.09], [-0.2, 0.1, 0.09], [-0.2, -0.1, 0.09]],
+    ]
+    vel = [
+        [[0.0, 0.5, 0.0], [0.0, 0.0, 0.0], [0.0, 0.0, 0.0], [0.0, 0.0, 0.0]],
+        [[0.0, 0.5, 0.0], [0.0, 0.0, 0.0], [0.0, 0.0, 0.0], [0.0, 0.0, 0.0]],
+        [[0.0, 0.5, 0.0], [0.0, 0.0, 0.0], [0.0, 0.0, 0.0], [0.0, 0.0, 0.0]],
+    ]
+    env = SimpleNamespace(
+        num_envs=3,
+        device=torch.device("cpu"),
+        scene={
+            "robot": SimpleNamespace(
+                data=SimpleNamespace(
+                    body_pos_w=_buffer(pos),
+                    body_lin_vel_w=_buffer(vel),
+                    root_pos_w=_buffer([[0.0, 0.0, 0.49]] * 3),
+                    root_quat_w=_buffer([[1.0, 0.0, 0.0, 0.0]] * 3),
+                )
+            ),
+            "contact_forces": SimpleNamespace(data=SimpleNamespace(current_air_time=_buffer(air))),
+        },
+        command_manager=SimpleNamespace(get_command=lambda name: command),
+    )
+    asset = SceneEntityCfg("robot")
+    sensor = SceneEntityCfg("contact_forces")
+    air_penalty = wheel_air_time(env, sensor)
+    torch.testing.assert_close(air_penalty, torch.tensor([0.0, 0.0, 0.6]))
+
+    clearance_penalty = wheel_lateral_clearance_shortfall(env, asset, target_height=0.12)
+    torch.testing.assert_close(clearance_penalty, torch.tensor([0.0, 0.12**2 * 0.5, 0.0]), atol=1e-6, rtol=0)
+
+    # Stance reference is 0.4 m (median of [0.5, 0.4, 0.4]); shrinking to 0.3 m is penalized only without lateral cmd.
+    env.scene["robot"].data.body_pos_w = _buffer(
+        [
+            [[0.15, 0.1, 0.09], [0.15, -0.1, 0.09], [-0.15, 0.1, 0.09], [-0.15, -0.1, 0.09]],
+            [[0.15, 0.1, 0.09], [0.15, -0.1, 0.09], [-0.15, 0.1, 0.09], [-0.15, -0.1, 0.09]],
+            [[0.15, 0.1, 0.09], [0.15, -0.1, 0.09], [-0.15, 0.1, 0.09], [-0.15, -0.1, 0.09]],
+        ]
+    )
+    env._wheel_stance_ref = torch.tensor(0.5)
+    stance_penalty = wheel_stance_shortfall(env, asset)
+    torch.testing.assert_close(stance_penalty, torch.tensor([0.15**2, 0.0, 0.0]), atol=1e-6, rtol=0)
 
 
 @pytest.mark.parametrize("cfg_type", [M20FlatEnvCfg, M20RoughEnvCfg])

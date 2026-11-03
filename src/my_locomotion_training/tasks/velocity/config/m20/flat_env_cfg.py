@@ -18,5 +18,8 @@ class M20FlatEnvCfg(M20RoughEnvCfg):
         self.scene.terrain.terrain_generator = None
         self.scene.height_scanner = None
         self.observations.policy.height_scan = None
-        self.rewards.wheel_stance.params["terrain_sensor_cfg"] = None
+        for reward_name in ("rolling_leg_posture", "rolling_leg_vel", "wheel_stance"):
+            reward = getattr(self.rewards, reward_name, None)
+            if reward is not None and "terrain_sensor_cfg" in reward.params:
+                reward.params["terrain_sensor_cfg"] = None
         self.curriculum.terrain_levels = None
