@@ -16,6 +16,11 @@ from isaaclab.managers import SceneEntityCfg
 from my_locomotion_training.tasks.velocity.config.m20.flat_env_cfg import M20FlatEnvCfg
 from my_locomotion_training.tasks.velocity.config.m20.rough_env_cfg import M20RoughEnvCfg
 from my_locomotion_training.tasks.velocity.mdp.wheels import (
+    VelocityCommand,
+    VelocityCommandCfg,
+    joint_deviation_no_lateral,
+    leg_vel_no_lateral,
+    stand_still_joint_deviation_l1,
     wheel_air_time,
     wheel_contacts,
     wheel_lateral_clearance_shortfall,
@@ -52,16 +57,32 @@ def test_wheel_slip_distinguishes_rolling_sliding_and_airborne():
 def test_rest_penalty_allows_translation_and_turning_in_place():
     command = torch.tensor([[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 0.0, 0.5]])
     env = SimpleNamespace(
-        scene={"robot": SimpleNamespace(data=SimpleNamespace(joint_vel=_buffer([[2.0, 3.0]] * 3)))},
+        num_envs=3,
+        device=torch.device("cpu"),
+        scene={
+            "robot": SimpleNamespace(
+                data=SimpleNamespace(
+                    joint_pos=_buffer([[0.2, -0.3]] * 3),
+                    default_joint_pos=_buffer([[0.0, 0.0]] * 3),
+                    joint_vel=_buffer([[2.0, 3.0]] * 3),
+                )
+            )
+        },
         command_manager=SimpleNamespace(get_command=lambda name: command),
     )
     actual = wheel_vel_at_rest(env, SceneEntityCfg("robot"), command_name="base_velocity")
     torch.testing.assert_close(actual, torch.tensor([13.0, 0.0, 0.0]))
+    stand_still = stand_still_joint_deviation_l1(env, command_name="base_velocity", asset_cfg=SceneEntityCfg("robot"))
+    torch.testing.assert_close(stand_still, torch.tensor([0.5, 0.0, 0.0]))
+    rolling_posture = joint_deviation_no_lateral(env, SceneEntityCfg("robot"), command_name="base_velocity")
+    torch.testing.assert_close(rolling_posture, torch.tensor([0.5, 0.5, 0.0]))
+    rolling_vel = leg_vel_no_lateral(env, SceneEntityCfg("robot"), command_name="base_velocity")
+    torch.testing.assert_close(rolling_vel, torch.tensor([13.0, 13.0, 0.0]))
 
 
 def test_lateral_stepping_rewards_allow_diagonal_lift_and_penalize_dragging():
     # Up to 2 wheels lifted at once is allowed (Env 0, Env 1); 3 wheels lifted is penalized (Env 2).
-    command = torch.tensor([[0.5, 0.0, 0.0], [0.0, 0.5, 0.0], [0.0, -0.5, 0.0]])
+    command = torch.tensor([[0.5, 0.0, 0.0], [0.0, 0.5, 0.0], [0.0, 0.0, 0.5]])
     air = [[0.2, 0.0, 0.0, 0.0], [0.2, 0.2, 0.0, 0.0], [0.2, 0.2, 0.2, 0.0]]
     pos = [
         [[0.25, 0.1, 0.09], [0.25, -0.1, 0.09], [-0.25, 0.1, 0.09], [-0.25, -0.1, 0.09]],
@@ -138,8 +159,50 @@ def test_control_and_position_terms_exclude_continuous_wheels(cfg_type):
     assert cfg.actions.wheel_vel.scale == 10.0
     assert cfg.actions.wheel_vel.use_default_offset is False
     assert cfg.rewards.feet_air_time is None
+    assert cfg.rewards.stand_still.func is stand_still_joint_deviation_l1
     assert cfg.rewards.alive.weight == 1.0
     assert cfg.rewards.terminating.weight == -200.0
+    cmd_cfg = cfg.commands.base_velocity
+    assert isinstance(cmd_cfg, VelocityCommandCfg)
+    assert cmd_cfg.class_type is VelocityCommand
+    assert (
+        cmd_cfg.rel_standing_envs + cmd_cfg.rel_lin_x_envs + cmd_cfg.rel_lin_y_envs + cmd_cfg.rel_yaw_envs <= 1.0
+    )
+
+
+def test_velocity_command_pure_modes_zero_other_axes():
+    cfg = VelocityCommandCfg(
+        asset_name="robot",
+        resampling_time_range=(10.0, 10.0),
+        rel_standing_envs=0.1,
+        rel_lin_x_envs=0.2,
+        rel_lin_y_envs=0.2,
+        rel_yaw_envs=0.2,
+        rel_heading_envs=1.0,
+        heading_command=True,
+        heading_control_stiffness=0.5,
+        ranges=VelocityCommandCfg.Ranges(
+            lin_vel_x=(-1.0, 1.0), lin_vel_y=(-1.0, 1.0), ang_vel_z=(-1.0, 1.0), heading=(-3.14, 3.14)
+        ),
+    )
+    env = SimpleNamespace(
+        num_envs=200,
+        device=torch.device("cpu"),
+        scene={"robot": SimpleNamespace(data=SimpleNamespace(heading_w=_buffer([0.0] * 200)))},
+        sim=SimpleNamespace(vis_marker_registry=SimpleNamespace(clear_debug_vis_callback=lambda _: None)),
+    )
+    cmd = VelocityCommand(cfg, env)
+    cmd._resample_command(slice(None))
+    cmd._update_command()
+    assert (cmd.command[cmd.is_standing_env] == 0.0).all()
+    assert (cmd.command[cmd.is_lin_x_env, 1:] == 0.0).all()
+    assert (cmd.command[cmd.is_lin_y_env][:, [0, 2]] == 0.0).all()
+    assert (cmd.command[cmd.is_yaw_env, :2] == 0.0).all()
+    # Modes are mutually exclusive.
+    mode_sum = (
+        cmd.is_standing_env.int() + cmd.is_lin_x_env.int() + cmd.is_lin_y_env.int() + cmd.is_yaw_env.int()
+    )
+    assert (mode_sum <= 1).all()
 
 
 def test_flat_configuration_does_not_mutate_rough_height_terms():

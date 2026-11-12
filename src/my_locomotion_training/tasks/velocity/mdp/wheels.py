@@ -11,11 +11,72 @@ from typing import TYPE_CHECKING
 
 import torch
 
+from isaaclab.envs.mdp.commands import UniformVelocityCommand, UniformVelocityCommandCfg
 from isaaclab.managers import SceneEntityCfg
+from isaaclab.utils import configclass, index_fill_
 from isaaclab.utils.math import quat_apply_inverse
 
 if TYPE_CHECKING:
+    from collections.abc import Sequence
+
     from isaaclab.envs import ManagerBasedRLEnv
+
+
+class VelocityCommand(UniformVelocityCommand):
+    """Uniform velocity command generator with explicit probabilities for pure single-axis modes."""
+
+    cfg: VelocityCommandCfg
+
+    def __init__(self, cfg: VelocityCommandCfg, env: ManagerBasedRLEnv):
+        super().__init__(cfg, env)
+        total = cfg.rel_standing_envs + cfg.rel_lin_x_envs + cfg.rel_lin_y_envs + cfg.rel_yaw_envs
+        if total > 1.0 + 1e-6:
+            raise ValueError(f"Mode probabilities sum to {total:.3f}, which exceeds 1.0.")
+        self.is_lin_x_env = torch.zeros_like(self.is_standing_env)
+        self.is_lin_y_env = torch.zeros_like(self.is_standing_env)
+        self.is_yaw_env = torch.zeros_like(self.is_standing_env)
+
+    def _resample_command(self, env_ids: Sequence[int]):
+        super()._resample_command(env_ids)
+        num_envs = len(range(self.num_envs)[env_ids]) if isinstance(env_ids, slice) else len(env_ids)
+        u = torch.empty(num_envs, device=self.device).uniform_(0.0, 1.0)
+        p_stand = self.cfg.rel_standing_envs
+        p_x = p_stand + self.cfg.rel_lin_x_envs
+        p_y = p_x + self.cfg.rel_lin_y_envs
+        p_yaw = p_y + self.cfg.rel_yaw_envs
+
+        self.is_standing_env[env_ids] = u < p_stand
+        self.is_lin_x_env[env_ids] = (u >= p_stand) & (u < p_x)
+        self.is_lin_y_env[env_ids] = (u >= p_x) & (u < p_y)
+        self.is_yaw_env[env_ids] = (u >= p_y) & (u < p_yaw)
+        if self.cfg.heading_command:
+            pure_mode = (
+                self.is_standing_env[env_ids]
+                | self.is_lin_x_env[env_ids]
+                | self.is_lin_y_env[env_ids]
+                | self.is_yaw_env[env_ids]
+            )
+            self.is_heading_env[env_ids] &= ~pure_mode
+
+    def _update_command(self):
+        super()._update_command()
+        index_fill_(self.vel_command_b[:, 1:], self.is_lin_x_env, 0.0)
+        index_fill_(self.vel_command_b[:, 0], self.is_lin_y_env, 0.0)
+        index_fill_(self.vel_command_b[:, 2], self.is_lin_y_env, 0.0)
+        index_fill_(self.vel_command_b[:, :2], self.is_yaw_env, 0.0)
+
+
+@configclass
+class VelocityCommandCfg(UniformVelocityCommandCfg):
+    """Configuration for velocity commands with explicit single-axis mode probabilities."""
+
+    class_type: type = VelocityCommand
+    rel_lin_x_envs: float = 0.0
+    """Sampled probability of pure forward/backward commands (lin_vel_y = 0, ang_vel_z = 0)."""
+    rel_lin_y_envs: float = 0.0
+    """Sampled probability of pure lateral commands (lin_vel_x = 0, ang_vel_z = 0)."""
+    rel_yaw_envs: float = 0.0
+    """Sampled probability of pure in-place turning commands (lin_vel_x = 0, lin_vel_y = 0)."""
 
 
 def wheel_contacts(env: ManagerBasedRLEnv, sensor_cfg: SceneEntityCfg, threshold: float = 1.0) -> torch.Tensor:
@@ -47,6 +108,21 @@ def wheel_slip(
     return (surface_velocity[..., :2].square().sum(dim=-1) * contact).sum(dim=-1)
 
 
+def stand_still_joint_deviation_l1(
+    env: ManagerBasedRLEnv,
+    command_name: str,
+    command_threshold: float = 0.06,
+    asset_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
+) -> torch.Tensor:
+    """Penalize offsets from the default joint positions when both translation and yaw commands are near zero."""
+    robot = env.scene[asset_cfg.name]
+    ids = asset_cfg.joint_ids
+    deviation = robot.data.joint_pos.torch[:, ids] - robot.data.default_joint_pos.torch[:, ids]
+    command = env.command_manager.get_command(command_name)
+    at_rest = torch.linalg.vector_norm(command[:, :3], dim=-1) < command_threshold
+    return deviation.abs().sum(dim=-1) * at_rest
+
+
 def wheel_vel_at_rest(
     env: ManagerBasedRLEnv,
     asset_cfg: SceneEntityCfg,
@@ -61,7 +137,8 @@ def wheel_vel_at_rest(
 
 
 def _no_lateral_command(env: ManagerBasedRLEnv, command_name: str, threshold: float) -> torch.Tensor:
-    return env.command_manager.get_command(command_name)[:, 1].abs() < threshold
+    command = env.command_manager.get_command(command_name)
+    return (command[:, 1].abs() < threshold) & (command[:, 2].abs() < threshold)
 
 
 def _flat_terrain(env: ManagerBasedRLEnv, sensor_cfg: SceneEntityCfg | None, max_relief: float) -> torch.Tensor:
@@ -83,10 +160,10 @@ def joint_deviation_no_lateral(
     terrain_sensor_cfg: SceneEntityCfg | None = None,
     max_relief: float = 0.05,
 ) -> torch.Tensor:
-    """L1 deviation from default joints, active only without a lateral command.
+    """L1 deviation from default joints, active only without a lateral or yaw command.
 
-    Pure forward/backward/yaw commands should be tracked by wheel rolling with the legs held
-    at their default pose, while lateral commands need the hips and legs to move. If
+    Pure forward/backward commands should be tracked by wheel rolling with the legs held
+    at their default pose, while lateral and yaw commands need the hips and legs to move. If
     ``terrain_sensor_cfg`` is given, the penalty is also disabled on non-flat terrain (stairs).
     """
     robot = env.scene[asset_cfg.name]
@@ -106,7 +183,7 @@ def leg_vel_no_lateral(
     terrain_sensor_cfg: SceneEntityCfg | None = None,
     max_relief: float = 0.05,
 ) -> torch.Tensor:
-    """Penalize leg joint speed without a lateral command, on flat terrain only."""
+    """Penalize leg joint speed without a lateral or yaw command, on flat terrain only."""
     velocity = env.scene[asset_cfg.name].data.joint_vel.torch[:, asset_cfg.joint_ids]
     active = _no_lateral_command(env, command_name, lateral_threshold) & _flat_terrain(
         env, terrain_sensor_cfg, max_relief
@@ -141,7 +218,7 @@ def wheel_lateral_clearance_shortfall(
 ) -> torch.Tensor:
     """Penalize laterally swinging wheels that stay too close to the ground.
 
-    Active only when a lateral command is given. Wheel height is measured relative to the
+    Active only when a lateral or yaw command is given. Wheel height is measured relative to the
     lowest wheel in each environment (the supporting stance height), weighted by the wheel's
     base-frame lateral speed so stance wheels are not penalized and swinging wheels must lift
     by ``target_height`` [m] to avoid dragging.

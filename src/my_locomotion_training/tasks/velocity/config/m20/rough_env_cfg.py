@@ -5,6 +5,8 @@
 
 """M20 mixed position/velocity control on rough terrain."""
 
+import math
+
 from isaaclab.managers import EventTermCfg as EventTerm
 from isaaclab.managers import ObservationTermCfg as ObsTerm
 from isaaclab.managers import RewardTermCfg as RewTerm
@@ -13,6 +15,7 @@ from isaaclab.utils import configclass
 from isaaclab.utils.noise import UniformNoiseCfg as Unoise
 
 from isaaclab_tasks.core.velocity.velocity_env_cfg import (
+    CommandsCfg,
     EventsCfg,
     LocomotionVelocityRoughEnvCfg,
     ObservationsCfg,
@@ -29,6 +32,28 @@ from my_locomotion_training.assets.m20 import (
 )
 
 from ... import mdp
+
+
+@configclass
+class M20CommandsCfg(CommandsCfg):
+    base_velocity = mdp.VelocityCommandCfg(
+        asset_name="robot",
+        resampling_time_range=(10.0, 10.0),
+        rel_standing_envs=0.05,
+        rel_lin_x_envs=0.05,
+        rel_lin_y_envs=0.05,
+        rel_yaw_envs=0.05,
+        rel_heading_envs=1.0,
+        heading_command=True,
+        heading_control_stiffness=0.5,
+        debug_vis=False,
+        ranges=mdp.VelocityCommandCfg.Ranges(
+            lin_vel_x=(-1.0, 1.0),
+            lin_vel_y=(-1.0, 1.0),
+            ang_vel_z=(-1.0, 1.0),
+            heading=(-math.pi, math.pi),
+        ),
+    )
 
 
 @configclass
@@ -88,13 +113,13 @@ class M20RewardsCfg(RewardsCfg):
         weight=-1.0,
         params={"command_name": "base_velocity", "asset_cfg": SceneEntityCfg("robot", joint_names=[LEG_JOINTS])},
     )
-    # Hip-x is only needed to move sideways, so keep it at default otherwise.
+    # Hip-x is only needed to move sideways or turn, so keep it at default otherwise.
     hipx_posture = RewTerm(
         func=mdp.joint_deviation_no_lateral,
         weight=-0.5,
         params={"asset_cfg": SceneEntityCfg("robot", joint_names=[".*_hipx_joint"])},
     )
-    # Without a lateral command on flat ground, drive with the wheels and keep the legs still.
+    # Without a lateral or yaw command on flat ground, drive with the wheels and keep the legs still.
     rolling_leg_posture = RewTerm(
         func=mdp.joint_deviation_no_lateral,
         weight=-1.0,
@@ -175,6 +200,7 @@ class M20EventsCfg(EventsCfg):
 
 @configclass
 class M20RoughEnvCfg(LocomotionVelocityRoughEnvCfg):
+    commands: M20CommandsCfg = M20CommandsCfg()
     actions: M20ActionsCfg = M20ActionsCfg()
     observations: M20ObservationsCfg = M20ObservationsCfg()
     rewards: M20RewardsCfg = M20RewardsCfg()
@@ -197,12 +223,6 @@ class M20RoughEnvCfg(LocomotionVelocityRoughEnvCfg):
         terrains["random_rough"].noise_step = 0.01
         terrains["pyramid_stairs"].step_height_range = (0.025, 0.2)
         terrains["pyramid_stairs_inv"].step_height_range = (0.025, 0.2)
-
-        self.commands.base_velocity.ranges.lin_vel_x = (-1.0, 1.0)
-        self.commands.base_velocity.ranges.lin_vel_y = (-1.0, 1.0)
-        self.commands.base_velocity.ranges.ang_vel_z = (-1.0, 1.0)
-        self.commands.base_velocity.rel_standing_envs = 0.1
-        self.commands.base_velocity.debug_vis = False
 
         for event_name in ("add_base_mass", "base_com", "base_external_force_torque"):
             getattr(self.events, event_name).params["asset_cfg"].body_names = ["base_link"]
