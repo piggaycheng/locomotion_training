@@ -250,7 +250,7 @@ class M20RoughEnvCfg(LocomotionVelocityRoughEnvCfg):
         self.rewards.track_lin_vel_xy_exp.weight = 3.0
         self.rewards.track_lin_vel_xy_exp.params["std"] = 0.5
         self.rewards.track_ang_vel_z_exp.weight = 3.0
-        self.rewards.track_ang_vel_z_exp.params["std"] = 0.25
+        self.rewards.track_ang_vel_z_exp.params["std"] = 0.5
         self.rewards.flat_orientation_l2.weight = -1.0
         self.rewards.dof_torques_l2.weight = -2.0e-6
         self.rewards.dof_acc_l2.weight = -5.0e-8
