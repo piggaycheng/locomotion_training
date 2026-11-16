@@ -6,11 +6,8 @@
 """Lazy exports for shared velocity terms and wheel-specific terms."""
 
 __all__ = [
-    "VelocityCommand",
-    "VelocityCommandCfg",
     "joint_deviation_no_lateral",
     "leg_vel_no_lateral",
-    "stand_still_joint_deviation_l1",
     "wheel_air_time",
     "wheel_air_time_variance",
     "wheel_contacts",
@@ -24,11 +21,8 @@ __all__ = [
 from isaaclab_tasks.core.velocity.mdp import *
 
 from .wheels import (
-    VelocityCommand,
-    VelocityCommandCfg,
     joint_deviation_no_lateral,
     leg_vel_no_lateral,
-    stand_still_joint_deviation_l1,
     wheel_air_time,
     wheel_air_time_variance,
     wheel_contacts,
